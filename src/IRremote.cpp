@@ -35,7 +35,7 @@ struct irparams_struct irparams; // the irparams instance
 //   functions even in non-DEBUG mode
 //
 int MATCH(unsigned int measured, unsigned int desired) {
-#if DEBUG
+#ifdef TRACE
     Serial.print(F("Testing: "));
     Serial.print(TICKS_LOW(desired), DEC);
     Serial.print(F(" <= "));
@@ -44,7 +44,7 @@ int MATCH(unsigned int measured, unsigned int desired) {
     Serial.print(TICKS_HIGH(desired), DEC);
 #endif
     bool passed = ((measured >= TICKS_LOW(desired)) && (measured <= TICKS_HIGH(desired)));
-#if DEBUG
+#ifdef TRACE
     if (passed) {
         Serial.println(F("?; passed"));
     } else {
@@ -58,7 +58,7 @@ int MATCH(unsigned int measured, unsigned int desired) {
 // Due to sensor lag, when received, Marks tend to be 100us too long
 //
 int MATCH_MARK(uint16_t measured_ticks, unsigned int desired_us) {
-#if DEBUG
+#ifdef TRACE
     Serial.print(F("Testing mark (actual vs desired): "));
     Serial.print(measured_ticks * MICROS_PER_TICK, DEC);
     Serial.print(F("us vs "));
@@ -73,7 +73,7 @@ int MATCH_MARK(uint16_t measured_ticks, unsigned int desired_us) {
     // compensate for marks exceeded by demodulator hardware
     bool passed = ((measured_ticks >= TICKS_LOW(desired_us + MARK_EXCESS_MICROS))
             && (measured_ticks <= TICKS_HIGH(desired_us + MARK_EXCESS_MICROS)));
-#if DEBUG
+#ifdef TRACE
     if (passed) {
         Serial.println(F("?; passed"));
     } else {
@@ -87,7 +87,7 @@ int MATCH_MARK(uint16_t measured_ticks, unsigned int desired_us) {
 // Due to sensor lag, when received, Spaces tend to be 100us too short
 //
 int MATCH_SPACE(uint16_t measured_ticks, unsigned int desired_us) {
-#if DEBUG
+#ifdef TRACE
     Serial.print(F("Testing space (actual vs desired): "));
     Serial.print(measured_ticks * MICROS_PER_TICK, DEC);
     Serial.print(F("us vs "));
@@ -102,7 +102,7 @@ int MATCH_SPACE(uint16_t measured_ticks, unsigned int desired_us) {
     // compensate for marks exceeded and spaces shortened by demodulator hardware
     bool passed = ((measured_ticks >= TICKS_LOW(desired_us - MARK_EXCESS_MICROS))
             && (measured_ticks <= TICKS_HIGH(desired_us - MARK_EXCESS_MICROS)));
-#if DEBUG
+#ifdef TRACE
     if (passed) {
         Serial.println(F("?; passed"));
     } else {
@@ -128,14 +128,13 @@ ISR (TIMER_INTR_NAME) {
     TIMER_RESET_INTR_PENDING; // reset timer interrupt flag if required (currently only for Teensy and ATmega4809)
 
     // Read if IR Receiver -> SPACE [xmt LED off] or a MARK [xmt LED on]
-    // digitalRead() is very slow. Optimisation is possible, but makes the code unportable
     uint8_t irdata = (uint8_t) digitalRead(irparams.recvpin);
 
     irparams.timer++;  // One more 50uS tick
-    if (irparams.rawlen >= RAW_BUFFER_LENGTH) {
-        // Flag up a read overflow; Stop the State Machine
-        irparams.overflow = true;
-        irparams.rcvstate = IR_REC_STATE_STOP;
+
+    // clip timer at maximum 0xFFFF
+    if(irparams.timer == 0) {
+        irparams.timer--;
     }
 
     /*
@@ -146,19 +145,31 @@ ISR (TIMER_INTR_NAME) {
     //......................................................................
     if (irparams.rcvstate == IR_REC_STATE_IDLE) { // In the middle of a gap
         if (irdata == MARK) {
-            if (irparams.timer < GAP_TICKS) {  // Not big enough to be a gap.
-                irparams.timer = 0;
-            } else {
-                // Gap just ended; Record gap duration; Start recording transmission
+            // check if we did not start in the middle of an command by checking the minimum length of leading space
+            if (irparams.timer > GAP_TICKS) {
+                // Gap just ended; Record gap duration + start recording transmission
                 // Initialize all state machine variables
                 irparams.overflow = false;
-                irparams.rawlen = 0;
-                irparams.rawbuf[irparams.rawlen++] = irparams.timer;
-                irparams.timer = 0;
+                irparams.rawbuf[0] = irparams.timer;
+                irparams.rawlen = 1;
                 irparams.rcvstate = IR_REC_STATE_MARK;
             }
+            irparams.timer = 0;
         }
-    } else if (irparams.rcvstate == IR_REC_STATE_MARK) {  // Timing Mark
+    }
+
+    /*
+     * Here we detected a start mark and record the signal
+     */
+    // First check for buffer overflow
+    if (irparams.rawlen >= RAW_BUFFER_LENGTH) {
+        // Flag up a read overflow; Stop the State Machine
+        irparams.overflow = true;
+        irparams.rcvstate = IR_REC_STATE_STOP;
+    }
+
+    // record marks and spaces and detect end of code
+    if (irparams.rcvstate == IR_REC_STATE_MARK) {  // Timing Mark
         if (irdata == SPACE) {   // Mark ended; Record time
             irparams.rawbuf[irparams.rawlen++] = irparams.timer;
             irparams.timer = 0;
@@ -170,16 +181,21 @@ ISR (TIMER_INTR_NAME) {
             irparams.timer = 0;
             irparams.rcvstate = IR_REC_STATE_MARK;
 
-        } else if (irparams.timer > GAP_TICKS) {  // Space
-            // A long Space, indicates gap between codes
-            // Flag the current code as ready for processing
-            // Switch to STOP
-            // Don't reset timer; keep counting Space width
+        } else if (irparams.timer > GAP_TICKS) {
+            /*
+             * A long Space, indicates gap between codes
+             * Switch to IR_REC_STATE_STOP, which means current code is ready for processing
+             * Don't reset timer; keep counting width of next leading space
+             */
             irparams.rcvstate = IR_REC_STATE_STOP;
         }
-    } else if (irparams.rcvstate == IR_REC_STATE_STOP) {  // Waiting; Measuring Gap
+    } else if (irparams.rcvstate == IR_REC_STATE_STOP) {
+        /*
+         * Complete command received
+         * stay here until resume() is called, which switches state to IR_REC_STATE_IDLE
+         */
         if (irdata == MARK) {
-            irparams.timer = 0;  // Reset gap timer
+            irparams.timer = 0;  // Reset gap timer, to prepare for call of resume()
         }
     }
 

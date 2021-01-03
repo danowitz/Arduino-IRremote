@@ -39,7 +39,7 @@ void setup() {
     delay(2000); // To be able to connect Serial monitor after reset and before first printout
 #endif
     // Just to know which program is running on my Arduino
-    Serial.println(F("START " __FILE__ " from " __DATE__));
+    Serial.println(F("START " __FILE__ " from " __DATE__ "\r\nUsing library version " VERSION_IRREMOTE));
 
     IrReceiver.enableIRIn();  // Start the receiver
     IrReceiver.blink13(true); // Enable feedback LED
@@ -64,7 +64,6 @@ void setup() {
 // Storage for the recorded code
 int codeType = -1; // The type of code
 uint32_t codeValue; // The code value if not raw
-uint16_t address; // The address value if not raw
 uint16_t rawCodes[RAW_BUFFER_LENGTH]; // The durations if raw
 uint8_t codeLen; // The length of the code
 int toggle = 0; // The RC5/6 toggle state
@@ -72,14 +71,12 @@ int toggle = 0; // The RC5/6 toggle state
 // Stores the code for later playback
 // Most of this code is just logging
 void storeCode() {
-    if (IrReceiver.results.isRepeat) {
+    if (IrReceiver.decodedIRData.flags & IRDATA_FLAGS_IS_REPEAT) {
         Serial.println("Ignore repeat");
         return;
     }
-    codeType = IrReceiver.results.decode_type;
-    address = IrReceiver.results.address;
+    codeType = IrReceiver.decodedIRData.protocol;
 
-//  int count = IrReceiver.results.rawlen;
     if (codeType == UNKNOWN) {
         Serial.println("Received unknown code, saving as raw");
         codeLen = IrReceiver.results.rawlen - 1;
@@ -87,7 +84,7 @@ void storeCode() {
         // Drop first value (gap)
         // Convert from ticks to microseconds
         // Tweak marks shorter, and spaces longer to cancel out IR receiver distortion
-        for (int i = 1; i <= codeLen; i++) {
+        for (uint16_t i = 1; i <= codeLen; i++) {
             if (i % 2) {
                 // Mark
                 rawCodes[i - 1] = IrReceiver.results.rawbuf[i] * MICROS_PER_TICK - MARK_EXCESS_MICROS;
@@ -117,17 +114,6 @@ void sendCode(bool aSendRepeat) {
         } else {
             IrSender.sendNEC(codeValue, codeLen);
             Serial.print("Sent NEC ");
-            Serial.println(codeValue, HEX);
-        }
-    } else if (codeType == NEC_STANDARD) {
-        if (aSendRepeat) {
-            IrSender.sendNECRepeat();
-            Serial.println("Sent NEC repeat");
-        } else {
-            IrSender.sendNECStandard(address, codeValue);
-            Serial.print("Sent NEC_STANDARD address=0x");
-            Serial.print(address, HEX);
-            Serial.print(", command=0x");
             Serial.println(codeValue, HEX);
         }
     } else if (codeType == SONY) {

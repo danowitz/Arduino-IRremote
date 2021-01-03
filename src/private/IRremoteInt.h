@@ -17,6 +17,11 @@
 #ifndef IRremoteint_h
 #define IRremoteint_h
 
+/*
+ * Uncomment this line if your receiver has an external output driver transistor / "inverted" output
+ */
+//#define IR_INPUT_IS_ACTIVE_HIGH
+
 //------------------------------------------------------------------------------
 // Include the Arduino header
 //
@@ -80,7 +85,7 @@ extern struct irparams_struct irparams;
  * At 100us it also worked, but not as well.
  * Set MARK_EXCESS to 100us and the VS1838 doesn't work at all.
  */
-#define MARK_EXCESS_MICROS    100
+#define MARK_EXCESS_MICROS    50
 
 /** Relative tolerance (in percent) for some comparisons on measured data. */
 #define TOLERANCE       25
@@ -109,9 +114,15 @@ extern struct irparams_struct irparams;
 #endif
 
 //------------------------------------------------------------------------------
+// IR receivers on a board with an external output transistor may have "inverted" output
+#ifdef IR_INPUT_IS_ACTIVE_HIGH
+// IR detector output is active high
+#define MARK   1 ///< Sensor output for a mark ("flash")
+#define SPACE  0 ///< Sensor output for a space ("gap")
+#else
 // IR detector output is active low
-//
 #define MARK   0 ///< Sensor output for a mark ("flash")
 #define SPACE  1 ///< Sensor output for a space ("gap")
+#endif
 
 #endif

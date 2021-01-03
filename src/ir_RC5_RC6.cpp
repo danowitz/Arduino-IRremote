@@ -10,11 +10,11 @@
 // Returns -1 for error (measured time interval is not a multiple of t1).
 //
 #if (DECODE_RC5 || DECODE_RC6)
-int getRClevel(decode_results *results, unsigned int *offset, int *used, int t1) {
-    int width;
+int getRClevel(decode_results *results, unsigned int *offset, uint8_t *used, int t1) {
+    unsigned int width;
     int val;
     int correction;
-    int avail;
+    uint8_t avail;
 
     if (*offset >= results->rawlen) {
         return SPACE;  // After end of recorded buffer, assume SPACE.
@@ -39,7 +39,7 @@ int getRClevel(decode_results *results, unsigned int *offset, int *used, int t1)
         (*offset)++;
     }
 
-    DBG_PRINTLN((val == MARK) ? "MARK" : "SPACE");
+    TRACE_PRINTLN((val == MARK) ? "MARK" : "SPACE");
 
     return val;
 }
@@ -59,7 +59,6 @@ int getRClevel(decode_results *results, unsigned int *offset, int *used, int t1)
 #define RC5_RPT_LENGTH   46000 // Not used.
 
 //+=============================================================================
-#if SEND_RC5
 void IRsend::sendRC5(uint32_t data, uint8_t nbits) {
     // Set IR carrier frequency
     enableIROut(36);
@@ -148,14 +147,11 @@ void IRsend::sendRC5ext(uint8_t addr, uint8_t cmd, boolean toggle) {
     space(0);  // Always end with the LED off
 }
 
-#endif
-
 //+=============================================================================
-#if DECODE_RC5
 bool IRrecv::decodeRC5() {
-    int nbits;
-    long data = 0;
-    int used = 0;
+    uint8_t nbits;
+    unsigned long data = 0;
+    uint8_t used = 0;
     unsigned int offset = 1;  // Skip gap space
 
     if (results.rawlen < MIN_RC5_SAMPLES + 2) {
@@ -192,7 +188,8 @@ bool IRrecv::decodeRC5() {
     // Success
     results.bits = nbits;
     results.value = data;
-    results.decode_type = RC5;
+    decodedIRData.protocol = RC5;
+    decodedIRData.flags = IRDATA_FLAGS_IS_OLD_DECODER;
     return true;
 }
 bool IRrecv::decodeRC5(decode_results *aResults) {
@@ -200,7 +197,6 @@ bool IRrecv::decodeRC5(decode_results *aResults) {
     *aResults = results;
     return aReturnValue;
 }
-#endif
 
 //+=============================================================================
 // RRRR    CCCC   6666
@@ -217,7 +213,6 @@ bool IRrecv::decodeRC5(decode_results *aResults) {
 #define RC6_T1                444
 #define RC6_RPT_LENGTH      46000
 
-#if SEND_RC6
 void IRsend::sendRC6(uint32_t data, uint8_t nbits) {
     // Set IR carrier frequency
     enableIROut(36);
@@ -234,7 +229,7 @@ void IRsend::sendRC6(uint32_t data, uint8_t nbits) {
     uint32_t mask = 1UL << (nbits - 1);
     for (uint8_t i = 1; mask; i++, mask >>= 1) {
         // The fourth bit we send is a "double width trailer bit"
-        int t = (i == 4) ? (RC6_T1 * 2) : (RC6_T1);
+        unsigned int t = (i == 4) ? (RC6_T1 * 2) : (RC6_T1);
         if (data & mask) {
             mark(t);
             space(t);
@@ -263,7 +258,7 @@ void IRsend::sendRC6(uint64_t data, uint8_t nbits) {
     uint64_t mask = 1ULL << (nbits - 1);
     for (uint8_t i = 1; mask; i++, mask >>= 1) {
         // The fourth bit we send is a "double width trailer bit"
-        int t = (i == 4) ? (RC6_T1 * 2) : (RC6_T1);
+        unsigned int t = (i == 4) ? (RC6_T1 * 2) : (RC6_T1);
         if (data & mask) {
             mark(t);
             space(t);
@@ -275,14 +270,12 @@ void IRsend::sendRC6(uint64_t data, uint8_t nbits) {
 
     space(0);  // Always end with the LED off
 }
-#endif
 
 //+=============================================================================
-#if DECODE_RC6
 bool IRrecv::decodeRC6() {
-    int nbits;
+    unsigned int nbits;
     uint32_t data = 0;
-    int used = 0;
+    uint8_t used = 0;
     unsigned int offset = 1;  // Skip first space
 
     if (results.rawlen < MIN_RC6_SAMPLES) {
@@ -339,12 +332,13 @@ bool IRrecv::decodeRC6() {
     // Success
     results.bits = nbits;
     results.value = data;
-    results.decode_type = RC6;
+    decodedIRData.protocol = RC6;
+    decodedIRData.flags = IRDATA_FLAGS_IS_OLD_DECODER;
     return true;
 }
+
 bool IRrecv::decodeRC6(decode_results *aResults) {
     bool aReturnValue = decodeRC6();
     *aResults = results;
     return aReturnValue;
 }
-#endif

@@ -1,5 +1,11 @@
-## 2.8.2 2020/11
+## 2.8.2 2020/12
 - Added SendRaw with byte data.
+- Fixed resume bug if irparams.rawlen >= RAW_BUFFER_LENGTH. Thanks to Iosif Peterfi
+- Added `dumpPronto(String *aString, unsigned int frequency)` with String object as argument. Thanks to Iosif Peterfi
+- Handling leading gap/space inconsistency for raw data.
+- Fixed swapped cases in `getProtocolString()`. Thanks to Jim-2249
+- Added compile option `IR_INPUT_IS_ACTIVE_HIGH`. Thanks to Jim-2249
+- Corrected template. Thanks to Jim-2249
 
 ## 2.8.1 2020/10
 - Fixed bug in Sony decode introduced in 2.8.0.
@@ -26,7 +32,7 @@
 - Added `DECODE_NEC_STANDARD` and `SEND_NEC_STANDARD`.
 - Renamed all IRrecv* examples to IRreceive*.
 - Added functions `printResultShort(&Serial)` and `getProtocolString(decode_type_t aDecodeType)`.
-- Added flag `results.isRepeat`.
+- Added flag `decodedIRData.isRepeat`.
 - Updated examples.
 
 ## 2.6.1 2020/08
@@ -130,7 +136,7 @@ Changes from #268 by adamlhumphreys
 - Added Aiwa RC-T501 Protocol
 - Added Denon Protocol
 - Added Pronto Support
-- Added Library Properties
+- Added compile options
 - Added Template For New Protocols
 - Added this changelog
 - Added Teensy LC Support

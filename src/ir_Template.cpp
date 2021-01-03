@@ -38,40 +38,40 @@
  #define DECODE_SHUZU  1
  #define SEND_SHUZU    1
 
- B. In the section "enumerated list of all supported formats", add:
+ B. In the section "An enum consisting of all supported formats", add:
  SHUZU,
  to the end of the list (notice there is a comma after the protocol name)
 
  C. Further down in "Main class for receiving IR", add:
  //......................................................................
  #if DECODE_SHUZU
- bool  decodeShuzu (decode_results *aResults) ;
+ bool  decodeShuzu () ;
  #endif
 
  D. Further down in "Main class for sending IR", add:
  //......................................................................
  #if SEND_SHUZU
- void  sendShuzu (unsigned long data,  int nbits) ;
+ void  sendShuzu (unsigned long data, unsigned int nbits) ;
  #endif
 
  E. Save your changes and close the file
 
- 2. Now open irRecv.cpp and make the following change:
+ 2. Now open irReceive.cpp and make the following change:
 
  A. In the function IRrecv::decode(), add:
- #ifdef DECODE_NEC
+ #ifdef DECODE_SHUZU
  DBG_PRINTLN("Attempting Shuzu decode");
- if (decodeShuzu(results))  return true ;
+ if (decodeShuzu())  return true ;
  #endif
 
- B. Save your changes and close the file
+ B. In the function IRrecv::getProtocolString(), add
+ #if DECODE_SHUZU
+    case SHUZU:
+        return ("SHUZU");
+        break;
+#endif
 
- You will probably want to add your new protocol to the example sketch
-
- 3. Open MyDocuments\Arduino\libraries\IRremote\examples\IRrecvDumpV2.ino
-
- A. In the encoding() function, add:
- case SHUZU:    Serial.print("SHUZU");     break ;
+ C. Save your changes and close the file
 
  Now open the Arduino IDE, load up the rawDump.ino sketch, and run it.
  Hopefully it will compile and upload.
@@ -124,16 +124,7 @@ void IRsend::sendShuzu(unsigned long data, int nbits) {
     space(SHUZU_HEADER_SPACE);
 
     // Data
-    sendPulseDistanceData(data, nbits,  SHUZU_BIT_MARK, SHUZU_ONE_SPACE,SHUZU_BIT_MARK, SHUZU_ZERO_SPACE);
-//    for (unsigned long mask = 1UL << (nbits - 1); mask; mask >>= 1) {
-//        if (data & mask) {
-//            mark(SHUZU_BIT_MARK);
-//            space(SHUZU_ONE_SPACE);
-//        } else {
-//            mark(SHUZU_BIT_MARK);
-//            space(SHUZU_ZERO_SPACE);
-//        }
-//    }
+    sendPulseDistanceWidthData(SHUZU_BIT_MARK, SHUZU_ONE_SPACE, SHUZU_BIT_MARK, SHUZU_ZERO_SPACE, data, nbits);
 
     // Footer
     mark(SHUZU_BIT_MARK);
@@ -145,8 +136,7 @@ void IRsend::sendShuzu(unsigned long data, int nbits) {
 //
 #if DECODE_SHUZU
 bool IRrecv::decodeShuzu() {
-    unsigned long data = 0;  // Somewhere to build our code
-    int offset = 1;  // Skip the gap reading
+    unsigned int offset = 1;  // Skip the gap reading
 
     // Check we have the right amount of data
     if (results.rawlen != 1 + 2 + (2 * SHUZU_BITS) + 1) {
@@ -164,34 +154,12 @@ bool IRrecv::decodeShuzu() {
     }
     offset++;
 
-    data = decodePulseDistanceData(results, SHUZU_BITS, offset, SHUZU_BIT_MARK, SHUZU_ONE_SPACE, SHUZU_ZERO_SPACE);
-//    // Read the bits in
-//    for (int i = 0; i < SHUZU_BITS; i++) {
-//        // Each bit looks like: MARK + SPACE_1 -> 1
-//        //                 or : MARK + SPACE_0 -> 0
-//        if (!MATCH_MARK(results.rawbuf[offset], SHUZU_BIT_MARK)) {
-//            return false;
-//        }
-//        offset++;
-//
-//        // IR data is big-endian, so we shuffle it in from the right:
-//        if (MATCH_SPACE(results.rawbuf[offset], SHUZU_ONE_SPACE)) {
-//            data = (data << 1) | 1;
-//        } else if (MATCH_SPACE(results.rawbuf[offset], SHUZU_ZERO_SPACE)) {
-//            data = (data << 1) | 0;
-//        } else {
-//            return false;
-//        }
-//        offset++;
-//    }
+    data = decodePulseDistanceData(SHUZU_BITS, offset, SHUZU_BIT_MARK, SHUZU_ONE_SPACE, SHUZU_ZERO_SPACE);
 
     // Success
     results.bits = SHUZU_BITS;
     results.value = data;
-    results.decode_type = SHUZU;
+    decodedIRData.protocol = SHUZU;
     return true;
-}
-bool IRrecv::decodeShuzu(decode_results *aResults) {
-    bool aReturnValue = decodeShuzu();
 }
 #endif
